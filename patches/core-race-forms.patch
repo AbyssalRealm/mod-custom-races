@@ -1,0 +1,918 @@
+diff --git a/src/server/coa/AscensionCompat.cpp b/src/server/coa/AscensionCompat.cpp
+index d03fcb62..05469666 100644
+--- a/src/server/coa/AscensionCompat.cpp
++++ b/src/server/coa/AscensionCompat.cpp
+@@ -8729,6 +8729,9 @@ public:
+ 
+     if (opcode == CMSG_ANTICHEAT_ALERT)
+       return true;
++    // mod-custom-races: the two forms of a Worgen or Dracthyr (0x525) are a regular handler, not an extension packet.
++    if (opcode == 0x0525)
++      return true;
+ 
+     if (std::find(CORE_EXTENSION_OPCODES.begin(), CORE_EXTENSION_OPCODES.end(), opcode) !=
+         CORE_EXTENSION_OPCODES.end())
+diff --git a/src/server/database/Database/Implementation/CharacterDatabase.cpp b/src/server/database/Database/Implementation/CharacterDatabase.cpp
+index 9ba68ed0..2453ff7e 100644
+--- a/src/server/database/Database/Implementation/CharacterDatabase.cpp
++++ b/src/server/database/Database/Implementation/CharacterDatabase.cpp
+@@ -256,6 +256,24 @@ void CharacterDatabaseConnection::DoPrepareStatements()
+                      "LEFT JOIN character_ascension_state AS cas ON cas.guid = c.guid "
+                      "WHERE c.account = ? AND c.deleteInfos_Name IS NULL AND (cas.active IS NULL OR cas.active <> 0) "
+                      "ORDER BY COALESCE(c.order, c.guid)", CONNECTION_ASYNC);
++    // mod-custom-races: the looks of CoA Custom's x64 client (character_body_shape, character_retail_look, character_form_look)
++    PrepareStatement(CHAR_SEL_ENUM_BODY_SHAPE,
++        "SELECT b.guid, b.data FROM character_body_shape AS b JOIN characters AS c ON c.guid = b.guid "
++        "WHERE c.account = ? AND c.deleteInfos_Name IS NULL", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_SEL_ENUM_RETAIL_LOOK,
++        "SELECT l.guid, l.data, 0 FROM character_retail_look AS l JOIN characters AS c ON c.guid = l.guid "
++        "WHERE c.account = ? AND c.deleteInfos_Name IS NULL "
++        "UNION ALL SELECT f.guid, f.data, 1 FROM character_form_look AS f JOIN characters AS c ON c.guid = f.guid "
++        "WHERE c.account = ? AND c.deleteInfos_Name IS NULL", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_SEL_RETAIL_LOOK, "SELECT data FROM character_retail_look WHERE guid = ?", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_REP_RETAIL_LOOK, "REPLACE INTO character_retail_look (guid, data) VALUES (?, ?)", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_DEL_RETAIL_LOOK, "DELETE FROM character_retail_look WHERE guid = ?", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_SEL_FORM_LOOK, "SELECT data FROM character_form_look WHERE guid = ?", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_REP_FORM_LOOK, "REPLACE INTO character_form_look (guid, data) VALUES (?, ?)", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_DEL_FORM_LOOK, "DELETE FROM character_form_look WHERE guid = ?", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_SEL_BODY_SHAPE, "SELECT data FROM character_body_shape WHERE guid = ?", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_REP_BODY_SHAPE, "REPLACE INTO character_body_shape (guid, data) VALUES (?, ?)", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_DEL_BODY_SHAPE, "DELETE FROM character_body_shape WHERE guid = ?", CONNECTION_ASYNC);
+     PrepareStatement(CHAR_SEL_ENUM_DECLINED_NAME, "SELECT c.guid, c.name, c.race, c.class, c.gender, c.skin, c.face, c.hairStyle, c.hairColor, c.facialStyle, c.level, c.zone, c.map, "
+                      "c.position_x, c.position_y, c.position_z, gm.guildid, c.playerFlags, c.at_login, cp.entry, cp.modelid, cp.level, c.equipmentCache, "
+                      "cb.guid, c.extra_flags, cd.genitive, c.extraAppearance FROM characters AS c LEFT JOIN character_pet AS cp ON c.guid = cp.owner AND cp.slot = ? "
+diff --git a/src/server/database/Database/Implementation/CharacterDatabase.h b/src/server/database/Database/Implementation/CharacterDatabase.h
+index d9d024df..4295afb3 100644
+--- a/src/server/database/Database/Implementation/CharacterDatabase.h
++++ b/src/server/database/Database/Implementation/CharacterDatabase.h
+@@ -48,6 +48,17 @@ enum CharacterDatabaseStatements : uint32
+     CHAR_SEL_BANNED_NAME,
+     CHAR_SEL_ENUM,
+     CHAR_SEL_ENUM_DECLINED_NAME,
++    CHAR_SEL_ENUM_BODY_SHAPE,           // mod-custom-races: body sliders, Retail looks and the second form
++    CHAR_SEL_ENUM_RETAIL_LOOK,
++    CHAR_SEL_BODY_SHAPE,
++    CHAR_REP_BODY_SHAPE,
++    CHAR_DEL_BODY_SHAPE,
++    CHAR_SEL_RETAIL_LOOK,
++    CHAR_REP_RETAIL_LOOK,
++    CHAR_DEL_RETAIL_LOOK,
++    CHAR_SEL_FORM_LOOK,
++    CHAR_REP_FORM_LOOK,
++    CHAR_DEL_FORM_LOOK,
+     CHAR_SEL_FREE_NAME,
+     CHAR_SEL_CHAR_ZONE,
+     CHAR_SEL_CHARACTER_NAME_DATA,
+diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
+index d16620f6..352378c0 100644
+--- a/src/server/game/Entities/Player/Player.cpp
++++ b/src/server/game/Entities/Player/Player.cpp
+@@ -4743,6 +4743,13 @@ void Player::DeleteFromDB(ObjectGuid::LowType lowGuid, uint32 accountId, bool up
+                 stmt->SetData(0, lowGuid);
+                 trans->Append(stmt);
+ 
++                for (auto id : { CHAR_DEL_BODY_SHAPE, CHAR_DEL_RETAIL_LOOK, CHAR_DEL_FORM_LOOK })   // mod-custom-races
++                {
++                    stmt = CharacterDatabase.GetPreparedStatement(id);
++                    stmt->SetData(0, lowGuid);
++                    trans->Append(stmt);
++                }
++
+                 Corpse::DeleteFromDB(playerGuid, trans);
+ 
+                 sScriptMgr->OnPlayerDeleteFromDB(trans, lowGuid);
+@@ -12497,8 +12504,127 @@ void Player::SendInitialPacketsBeforeAddToMap()
+     sScriptMgr->OnPlayerSendInitialPacketsBeforeAddToMap(this, data);
+ }
+ 
++// mod-custom-races: the looks of CoA Custom's x64 client (see Player.h)
++void Player::LoadBodyShape(PreparedQueryResult result)
++{
++    _bodyShape = {};
++    if (!result)
++        return;
++
++    auto const payload = (*result)[0].Get<Binary, CharacterBodyShape::PayloadSize>();
++    CharacterBodyShape::Values values{};
++    if (CharacterBodyShape::ReadPayload(payload.data(), payload.size(), values))
++        _bodyShape = values;
++}
++
++void Player::SendBodyShapeTo(Player* receiver) const
++{
++    if (!receiver || !receiver->GetSession())
++        return;
++
++    // always sent, defaults included, so a client that cached an older value for this guid replaces it
++    uint8 payload[CharacterBodyShape::PayloadSize];
++    CharacterBodyShape::WritePayload(payload, _bodyShape);
++
++    WorldPacket data(SMSG_ESTERIA_BODY_SHAPE, 8 + CharacterBodyShape::PayloadSize);
++    data << GetGUID().GetRawValue();
++    data.append(payload, sizeof(payload));
++    receiver->GetSession()->SendPacket(&data);
++}
++
++void Player::LoadRetailLook(PreparedQueryResult result)
++{
++    _hasRetailLook = false;
++    _retailLook = {};
++    if (!result)
++        return;
++
++    auto const payload = (*result)[0].Get<Binary, CharacterRetailLook::PayloadSize>();
++    CharacterRetailLook::Look look;
++    if (CharacterRetailLook::ReadPayload(payload.data(), payload.size(), look))
++    {
++        _retailLook = payload;
++        _hasRetailLook = true;
++    }
++}
++
++void Player::SendRetailLookTo(Player* receiver) const
++{
++    // without a saved look there is nothing to send: the client falls back to the five stock bytes
++    if (!_hasRetailLook || !receiver || !receiver->GetSession())
++        return;
++
++    WorldPacket data(SMSG_ESTERIA_RETAIL_LOOK, 8 + CharacterRetailLook::PayloadSize);
++    data << GetGUID().GetRawValue();
++    data.append(_retailLook.data(), _retailLook.size());
++    receiver->GetSession()->SendPacket(&data);
++}
++
++void Player::LoadFormLook(PreparedQueryResult result)
++{
++    _hasParkedLook = false;
++    _parkedLook = {};
++    if (!result)
++        return;
++
++    auto const payload = (*result)[0].Get<Binary, CharacterRetailLook::PayloadSize>();
++    CharacterRetailLook::Look look;
++    if (CharacterRetailLook::ReadPayload(payload.data(), payload.size(), look))
++    {
++        _parkedLook = payload;
++        _hasParkedLook = true;
++    }
++}
++
++uint8 Player::GetActiveRetailForm() const
++{
++    CharacterRetailLook::Look look;
++    return _hasRetailLook && CharacterRetailLook::ReadPayload(_retailLook.data(), _retailLook.size(), look) ? look.form : 0;
++}
++
++bool Player::ToggleRetailForm()
++{
++    if (!_hasRetailLook || !_hasParkedLook)
++        return false;
++
++    CharacterRetailLook::Look active, parked;
++    if (!CharacterRetailLook::ReadPayload(_retailLook.data(), _retailLook.size(), active)
++        || !CharacterRetailLook::ReadPayload(_parkedLook.data(), _parkedLook.size(), parked))
++        return false;
++
++    uint8 const first = CharacterRetailLook::FirstFormForRace(getRace());
++    uint8 const second = static_cast<uint8>(first + 1);
++    bool const formsMatch = (active.form == first && parked.form == second)
++        || (active.form == second && parked.form == first);
++    if (!first || !formsMatch || active.race != getRace() || parked.race != getRace()
++        || active.sex != getGender() || parked.sex != getGender())
++        return false;
++
++    std::swap(_retailLook, _parkedLook);
++
++    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
++    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_RETAIL_LOOK);
++    stmt->SetData(0, GetGUID().GetCounter());
++    stmt->SetData(1, std::vector<uint8>(_retailLook.begin(), _retailLook.end()));
++    trans->Append(stmt);
++    stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_FORM_LOOK);
++    stmt->SetData(0, GetGUID().GetCounter());
++    stmt->SetData(1, std::vector<uint8>(_parkedLook.begin(), _parkedLook.end()));
++    trans->Append(stmt);
++    CharacterDatabase.CommitTransaction(trans);
++
++    // to this player and everyone who has them in view; who comes into view later gets it from SendRetailLookTo
++    WorldPacket data(SMSG_ESTERIA_RETAIL_LOOK, 8 + CharacterRetailLook::PayloadSize);
++    data << GetGUID().GetRawValue();
++    data.append(_retailLook.data(), _retailLook.size());
++    SendMessageToSet(&data, true);
++    return true;
++}
++
+ void Player::SendInitialPacketsAfterAddToMap()
+ {
++    SendBodyShapeTo(this);      // mod-custom-races
++    SendRetailLookTo(this);
+     UpdateVisibilityForPlayer(true);
+ 
+     GetSession()->ResetTimeSync();
+diff --git a/src/server/game/Entities/Player/Player.h b/src/server/game/Entities/Player/Player.h
+index e0cd3565..6861adb4 100644
+--- a/src/server/game/Entities/Player/Player.h
++++ b/src/server/game/Entities/Player/Player.h
+@@ -19,6 +19,8 @@
+ #define _PLAYER_H
+ 
+ #include "ArenaTeam.h"
++#include "BodyShapeWire.h"
++#include "RetailLookWire.h"
+ #include "Battleground.h"
+ #include "CharmInfo.h"
+ #include "CharacterCache.h"
+@@ -891,6 +893,9 @@ enum PlayerLoginQueryIndex
+     PLAYER_LOGIN_QUERY_LOAD_CHARACTER_SETTINGS           = 36,
+     PLAYER_LOGIN_QUERY_LOAD_PET_SLOTS                    = 37,
+     PLAYER_LOGIN_QUERY_LOAD_OFFLINE_ACHIEVEMENTS_UPDATES = 38,
++    PLAYER_LOGIN_QUERY_LOAD_BODY_SHAPE                   = 39,  // mod-custom-races
++    PLAYER_LOGIN_QUERY_LOAD_RETAIL_LOOK                  = 40,
++    PLAYER_LOGIN_QUERY_LOAD_FORM_LOOK                    = 41,
+     MAX_PLAYER_LOGIN_QUERY
+ };
+ 
+@@ -1144,6 +1149,17 @@ public:
+ 
+     void SendInitialPacketsBeforeAddToMap();
+     void SendInitialPacketsAfterAddToMap();
++    // mod-custom-races, CoA Custom's x64 client: body sliders (BodyShapeWire.h) and the full Retail customization
++    // (RetailLookWire.h), loaded at login and passed on to every player who sees this one. Two Forms (Worgen
++    // Wolf/Human, Dracthyr Dragon/Visage): the look of the form that is not showing; ToggleRetailForm swaps it with the
++    // active one, saves both and tells everyone in view (false without a saved pair).
++    void LoadBodyShape(PreparedQueryResult result);
++    void SendBodyShapeTo(Player* receiver) const;
++    void LoadRetailLook(PreparedQueryResult result);
++    void SendRetailLookTo(Player* receiver) const;
++    void LoadFormLook(PreparedQueryResult result);
++    bool ToggleRetailForm();
++    uint8 GetActiveRetailForm() const;
+     void SendTransferAborted(uint32 mapid, TransferAbortReason reason, uint8 arg = 0);
+     void SendInstanceResetWarning(uint32 mapid, Difficulty difficulty, uint32 time, bool onEnterMap);
+ 
+@@ -3208,6 +3224,11 @@ private:
+     bool _expectingChangeTransport;
+     uint32 _pendingFlightChangeCounter;
+     uint32 _mapChangeOrderCounter;
++    CharacterBodyShape::Values _bodyShape{};       // mod-custom-races
++    bool _hasRetailLook = false;
++    std::array<uint8, CharacterRetailLook::PayloadSize> _retailLook{};
++    bool _hasParkedLook = false;
++    std::array<uint8, CharacterRetailLook::PayloadSize> _parkedLook{};
+ };
+ 
+ void AddItemsSetItem(Player* player, Item* item);
+diff --git a/src/server/game/Entities/Player/PlayerStorage.cpp b/src/server/game/Entities/Player/PlayerStorage.cpp
+index cffead50..1ab8dff6 100644
+--- a/src/server/game/Entities/Player/PlayerStorage.cpp
++++ b/src/server/game/Entities/Player/PlayerStorage.cpp
+@@ -5777,6 +5777,9 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
+     _LoadBrewOfTheMonth(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_BREW_OF_THE_MONTH));
+ 
+     _LoadCharacterSettings(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_CHARACTER_SETTINGS));
++    LoadBodyShape(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_BODY_SHAPE));     // mod-custom-races
++    LoadRetailLook(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_RETAIL_LOOK));
++    LoadFormLook(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_FORM_LOOK));
+ 
+     // Players are immune to taunt
+     ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_TAUNT, true);
+diff --git a/src/server/game/Entities/Player/PlayerUpdates.cpp b/src/server/game/Entities/Player/PlayerUpdates.cpp
+index e87a16f2..9ebbfa68 100644
+--- a/src/server/game/Entities/Player/PlayerUpdates.cpp
++++ b/src/server/game/Entities/Player/PlayerUpdates.cpp
+@@ -1775,6 +1775,8 @@ inline void UpdateVisibilityOf_helper(Player* player, Player* target,
+ {
+     player->GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+     v.push_back(target);
++    target->SendBodyShapeTo(player);     // mod-custom-races
++    target->SendRetailLookTo(player);
+ }
+ 
+ template <class T>
+@@ -1848,6 +1850,12 @@ void Player::UpdateVisibilityOf(WorldObject* target)
+             target->SendUpdateToPlayer(this);
+             GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+ 
++            if (Player* other = target->ToPlayer())     // mod-custom-races
++            {
++                other->SendBodyShapeTo(this);
++                other->SendRetailLookTo(this);
++            }
++
+             // target aura duration for caster show only if target exist at
+             // caster client send data at target visibility change (adding to
+             // client)
+diff --git a/src/server/game/Handlers/CharacterHandler.cpp b/src/server/game/Handlers/CharacterHandler.cpp
+index 3fe5eb1f..0f6efb99 100644
+--- a/src/server/game/Handlers/CharacterHandler.cpp
++++ b/src/server/game/Handlers/CharacterHandler.cpp
+@@ -219,6 +219,19 @@ bool LoginQueryHolder::Initialize()
+     stmt->SetData(0, rawGUID);
+     res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_OFFLINE_ACHIEVEMENTS_UPDATES, stmt);
+ 
++    // mod-custom-races: the looks of CoA Custom's x64 client
++    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_BODY_SHAPE);
++    stmt->SetData(0, rawGUID);
++    res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_BODY_SHAPE, stmt);
++
++    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_RETAIL_LOOK);
++    stmt->SetData(0, rawGUID);
++    res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_RETAIL_LOOK, stmt);
++
++    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_FORM_LOOK);
++    stmt->SetData(0, rawGUID);
++    res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_FORM_LOOK, stmt);
++
+     return res;
+ }
+ 
+@@ -239,6 +252,42 @@ namespace
+     }
+ }
+ 
++namespace
++{
++    // mod-custom-races: the Retail look and the body sliders CoA Custom's x64 client sends with a new character
++    // (footers RLK1 and BSH1 at the end of the packet), kept until the character is saved
++    struct CreatedLooks
++    {
++        bool hasLook = false;
++        std::array<uint8, CharacterRetailLook::PayloadSize> look{};
++        bool hasShape = false;
++        std::array<uint8, CharacterBodyShape::PayloadSize> shape{};
++    };
++    std::unordered_map<CharacterCreateInfo const*, CreatedLooks> sCreatedLooks;
++
++    void KeepCreatedLooks(CharacterCreateInfo const* createInfo, CreatedLooks const& looks)
++    {
++        std::lock_guard<std::mutex> guard(sCreatedExtraLock);
++        if (looks.hasLook || looks.hasShape)
++            sCreatedLooks[createInfo] = looks;
++        else
++            sCreatedLooks.erase(createInfo);       // an earlier request at the same address
++    }
++
++    CreatedLooks TakeCreatedLooks(CharacterCreateInfo const* createInfo)
++    {
++        std::lock_guard<std::mutex> guard(sCreatedExtraLock);
++        CreatedLooks looks;
++        auto found = sCreatedLooks.find(createInfo);
++        if (found != sCreatedLooks.end())
++        {
++            looks = found->second;
++            sCreatedLooks.erase(found);
++        }
++        return looks;
++    }
++}
++
+ uint64 TakeCreatedExtraAppearance(CharacterCreateInfo const* createInfo)
+ {
+     std::lock_guard<std::mutex> guard(sCreatedExtraLock);
+@@ -250,8 +299,36 @@ uint64 TakeCreatedExtraAppearance(CharacterCreateInfo const* createInfo)
+     return value;
+ }
+ 
+-void WorldSession::HandleCharEnum(PreparedQueryResult result)
++void WorldSession::HandleCharEnum(PreparedQueryResult result, PreparedQueryResult bodyShape, PreparedQueryResult retailLook)
+ {
++    // mod-custom-races: the Retail looks (the one showing, and the parked second form of a Worgen or Dracthyr) and the
++    // body sliders, as blocks after the list for CoA Custom's x64 client (RLE1, RLP1, BSE1; see RetailLookWire.h)
++    using RetailPayload = std::array<uint8, CharacterRetailLook::PayloadSize>;
++    std::unordered_map<uint32, RetailPayload> retailLooks, parkedLooks;
++    if (retailLook)
++    {
++        do
++        {
++            auto const payload = (*retailLook)[1].Get<Binary, CharacterRetailLook::PayloadSize>();
++            CharacterRetailLook::Look look;
++            if (CharacterRetailLook::ReadPayload(payload.data(), payload.size(), look))
++                ((*retailLook)[2].Get<uint8>() ? parkedLooks : retailLooks)[(*retailLook)[0].Get<uint32>()] = payload;
++        } while (retailLook->NextRow());
++    }
++    std::unordered_map<uint32, std::array<uint8, CharacterBodyShape::PayloadSize>> bodyShapes;
++    if (bodyShape)
++    {
++        do
++        {
++            auto const payload = (*bodyShape)[1].Get<Binary, CharacterBodyShape::PayloadSize>();
++            CharacterBodyShape::Values values{};
++            if (CharacterBodyShape::ReadPayload(payload.data(), payload.size(), values) && !CharacterBodyShape::AllDefault(values))
++                bodyShapes[(*bodyShape)[0].Get<uint32>()] = payload;
++        } while (bodyShape->NextRow());
++    }
++    ByteBuffer bodyShapeBlock, retailLookBlock, parkedLookBlock;
++    uint32 bodyShapeCount = 0, retailLookCount = 0, parkedLookCount = 0;
++
+     WorldPacket data(SMSG_CHAR_ENUM, 100);                  // we guess size
+ 
+     uint8 num = 0;
+@@ -275,6 +352,24 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
+             {
+                 _legitCharacters.insert(guid);
+                 ++num;
++                if (auto const look = retailLooks.find(guid.GetCounter()); look != retailLooks.end())
++                {
++                    retailLookBlock << guid.GetRawValue();
++                    retailLookBlock.append(look->second.data(), look->second.size());
++                    ++retailLookCount;
++                }
++                if (auto const look = parkedLooks.find(guid.GetCounter()); look != parkedLooks.end())
++                {
++                    parkedLookBlock << guid.GetRawValue();
++                    parkedLookBlock.append(look->second.data(), look->second.size());
++                    ++parkedLookCount;
++                }
++                if (auto const shape = bodyShapes.find(guid.GetCounter()); shape != bodyShapes.end())
++                {
++                    bodyShapeBlock << guid.GetRawValue();
++                    bodyShapeBlock.append(shape->second.data(), shape->second.size());
++                    ++bodyShapeCount;
++                }
+                 uint64 const extra = (*result)[result->GetFieldCount() - 1].Get<uint64>();
+                 switch (ExtraAppearanceKind((*result)[2].Get<uint8>()))
+                 {
+@@ -304,6 +399,21 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
+         data.append(extraWide);
+         data << extraWideCount << uint32(0x32455848);   // HXE2
+     }
++    if (bodyShapeCount)
++    {
++        data.append(bodyShapeBlock);
++        data << bodyShapeCount << CharacterBodyShape::EnumMagic;     // BSE1
++    }
++    if (retailLookCount)
++    {
++        data.append(retailLookBlock);
++        data << retailLookCount << CharacterRetailLook::EnumMagic;   // RLE1
++    }
++    if (parkedLookCount)
++    {
++        data.append(parkedLookBlock);
++        data << parkedLookCount << CharacterRetailLook::ParkedMagic; // RLP1
++    }
+ 
+     SendPacket(&data);
+ }
+@@ -322,7 +432,27 @@ void WorldSession::HandleCharEnumOpcode(WorldPacket& /*recvData*/)
+     stmt->SetData(0, PET_SAVE_AS_CURRENT);
+     stmt->SetData(1, GetAccountId());
+ 
+-    _queryProcessor.AddCallback(CharacterDatabase.AsyncQuery(stmt).WithPreparedCallback(std::bind(&WorldSession::HandleCharEnum, this, std::placeholders::_1)));
++    // mod-custom-races: then the body sliders and the Retail looks of the account's characters
++    _queryProcessor.AddCallback(CharacterDatabase.AsyncQuery(stmt).WithChainingPreparedCallback(
++        [this](QueryCallback& callback, PreparedQueryResult result)
++        {
++            auto* bodyShapeStmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_ENUM_BODY_SHAPE);
++            bodyShapeStmt->SetData(0, GetAccountId());
++            callback.WithChainingPreparedCallback(
++                [this, result](QueryCallback& lastCallback, PreparedQueryResult bodyShape)
++                {
++                    auto* lookStmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_ENUM_RETAIL_LOOK);
++                    lookStmt->SetData(0, GetAccountId());
++                    lookStmt->SetData(1, GetAccountId());
++                    lastCallback.WithPreparedCallback(
++                        [this, result, bodyShape](PreparedQueryResult retailLook)
++                        {
++                            HandleCharEnum(result, bodyShape, retailLook);
++                        });
++                    lastCallback.SetNextQuery(CharacterDatabase.AsyncQuery(lookStmt));
++                });
++            callback.SetNextQuery(CharacterDatabase.AsyncQuery(bodyShapeStmt));
++        }));
+ }
+ 
+ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
+@@ -340,6 +470,26 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
+              >> createInfo->FacialHair
+              >> createInfo->OutfitId;
+ 
++    // mod-custom-races: CoA Custom's x64 client puts its Retail look (RLK1) and body sliders (BSH1) at the very end of
++    // the packet; they come off first, so the Haranir number below is again the last thing
++    {
++        CreatedLooks looks;
++        CharacterRetailLook::Look look;
++        CharacterBodyShape::Values shape{};
++        if (!CharacterRetailLook::ReadTail(recvData, looks.hasLook, look) ||
++            (looks.hasLook && (look.race != createInfo->Race || look.sex != createInfo->Gender)) ||
++            !CharacterBodyShape::ReadTail(recvData, looks.hasShape, shape))
++        {
++            SendCharCreate(CHAR_CREATE_FAILED);
++            return;
++        }
++        if (looks.hasLook)
++            CharacterRetailLook::WritePayload(looks.look.data(), look);
++        if (looks.hasShape)
++            CharacterBodyShape::WritePayload(looks.shape.data(), shape);
++        KeepCreatedLooks(createInfo.get(), looks);
++    }
++
+     // mod-custom-races: a race of EsteriaAppearance.dll keeps more of its looks: Highmountain Tauren and Earthen a sixth
+     // byte (the outfit byte, unused by the core), Haranir a 64-bit number and the mark HRC1 after the packet. A game
+     // client without the DLL sends neither; the character then has the first choice of each.
+@@ -686,6 +836,23 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
+             newChar->SaveToDB(characterTransaction, true, false);
+             createInfo->CharCount++;
+ 
++            // mod-custom-races: the Retail look and body sliders the new character came with
++            CreatedLooks const looks = TakeCreatedLooks(createInfo.get());
++            if (looks.hasLook)
++            {
++                CharacterDatabasePreparedStatement* lookStmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_RETAIL_LOOK);
++                lookStmt->SetData(0, newChar->GetGUID().GetCounter());
++                lookStmt->SetData(1, std::vector<uint8>(looks.look.begin(), looks.look.end()));
++                characterTransaction->Append(lookStmt);
++            }
++            if (looks.hasShape)
++            {
++                CharacterDatabasePreparedStatement* shapeStmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_BODY_SHAPE);
++                shapeStmt->SetData(0, newChar->GetGUID().GetCounter());
++                shapeStmt->SetData(1, std::vector<uint8>(looks.shape.begin(), looks.shape.end()));
++                characterTransaction->Append(shapeStmt);
++            }
++
+             LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_REP_REALM_CHARACTERS);
+             stmt->SetData(0, createInfo->CharCount);
+             stmt->SetData(1, GetAccountId());
+@@ -2131,6 +2298,90 @@ void WorldSession::HandleEquipmentSetUse(WorldPacket& recvData)
+     SendPacket(&data);
+ }
+ 
++// mod-custom-races, Two Forms: CoA Custom's x64 client commits both forms of a Worgen or Dracthyr after creating it (or
++// editing it later).
++//   CMSG: guid(8) revision(u32) activeForm(u8) look(132) look(132): the active form's look, then the other form's.
++//   SMSG_ESTERIA_FORM_LOOK_ACK: guid(8) revision(u32) result(u8): 0 saved, 1 not this account's character, 2 invalid,
++//         3 not a Two Forms race. The write is a plain REPLACE, so a resend of the same commit is harmless.
++void WorldSession::HandleEsteriaFormLookOpcode(WorldPacket& recvData)
++{
++    constexpr size_t payloadSize = CharacterRetailLook::PayloadSize;
++    if (recvData.size() - recvData.rpos() != 8 + 4 + 1 + 2 * payloadSize)
++    {
++        recvData.rfinish();
++        return;
++    }
++
++    uint64 rawGuid;
++    uint32 revision;
++    uint8 activeForm;
++    std::array<uint8, payloadSize> activePayload, parkedPayload;
++    recvData >> rawGuid >> revision >> activeForm;
++    recvData.read(activePayload.data(), payloadSize);
++    recvData.read(parkedPayload.data(), payloadSize);
++
++    ObjectGuid const guid(rawGuid);
++    auto reply = [&](uint8 result)
++    {
++        if (result)
++            LOG_WARN("network.opcode", "CMSG_ESTERIA_FORM_LOOK from account {} refused with result {}", GetAccountId(), result);
++        WorldPacket data(SMSG_ESTERIA_FORM_LOOK_ACK, 8 + 4 + 1);
++        data << rawGuid << revision << result;
++        SendPacket(&data);
++    };
++
++    if (!IsLegitCharacterForAccount(guid))
++    {
++        reply(1);
++        return;
++    }
++
++    CharacterCacheEntry const* character = sCharacterCache->GetCharacterCacheByGuid(guid);
++    if (!character)
++    {
++        reply(1);
++        return;
++    }
++
++    uint8 const first = CharacterRetailLook::FirstFormForRace(character->Race);
++    if (!first)
++    {
++        reply(3);
++        return;
++    }
++    uint8 const second = static_cast<uint8>(first + 1);
++
++    CharacterRetailLook::Look active, parked;
++    if (!CharacterRetailLook::ReadPayload(activePayload.data(), payloadSize, active)
++        || !CharacterRetailLook::ReadPayload(parkedPayload.data(), payloadSize, parked)
++        || (activeForm != first && activeForm != second)
++        || active.form != activeForm || parked.form != (activeForm == first ? second : first)
++        || active.race != character->Race || parked.race != character->Race
++        || active.sex != character->Sex || parked.sex != character->Sex)
++    {
++        reply(2);
++        return;
++    }
++
++    // written from the parsed looks, so what is stored is always the canonical encoding
++    std::vector<uint8> activeOut(payloadSize), parkedOut(payloadSize);
++    CharacterRetailLook::WritePayload(activeOut.data(), active);
++    CharacterRetailLook::WritePayload(parkedOut.data(), parked);
++
++    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
++    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_RETAIL_LOOK);
++    stmt->SetData(0, guid.GetCounter());
++    stmt->SetData(1, activeOut);
++    trans->Append(stmt);
++    stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_FORM_LOOK);
++    stmt->SetData(0, guid.GetCounter());
++    stmt->SetData(1, parkedOut);
++    trans->Append(stmt);
++    CharacterDatabase.CommitTransaction(trans);
++
++    reply(0);
++}
++
+ void WorldSession::HandleCharFactionOrRaceChange(WorldPacket& recvData)
+ {
+     std::shared_ptr<CharacterFactionChangeInfo> factionChangeInfo = std::make_shared<CharacterFactionChangeInfo>();
+diff --git a/src/server/game/Server/Protocol/Opcodes.cpp b/src/server/game/Server/Protocol/Opcodes.cpp
+index 2fbff78b..3488dd37 100644
+--- a/src/server/game/Server/Protocol/Opcodes.cpp
++++ b/src/server/game/Server/Protocol/Opcodes.cpp
+@@ -1444,6 +1444,10 @@ void OpcodeTable::Initialize()
+     // by internal calls (WorldSession::HandleTC9PrepareForRedirect), not by the client.
+     /*0x51F*/ DEFINE_HANDLER(CMSG_ANTICHEAT_ALERT,                                                  STATUS_AUTHED,     PROCESS_THREADUNSAFE,   &WorldSession::HandleAnticheatAlert                     );
+     /*0x520*/ DEFINE_SERVER_OPCODE_HANDLER(TC9_SMSG_READY_FOR_REDIRECT, STATUS_NEVER);
++    /*0x525*/ DEFINE_HANDLER(CMSG_ESTERIA_FORM_LOOK,                                                STATUS_AUTHED,     PROCESS_THREADUNSAFE,   &WorldSession::HandleEsteriaFormLookOpcode              );
++    /*0x575*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_ESTERIA_BODY_SHAPE, STATUS_NEVER);
++    /*0x576*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_ESTERIA_RETAIL_LOOK, STATUS_NEVER);
++    /*0x577*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_ESTERIA_FORM_LOOK_ACK, STATUS_NEVER);
+     // -- CoA extension range (consumed by mod-coa-challenges via CanPacketReceive;
+     // -- Handle_NULL is the fallback when the module is disabled) --
+     /*0x592*/ DEFINE_HANDLER(CMSG_COA_START_CHALLENGE,                                               STATUS_LOGGEDIN,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                              );
+diff --git a/src/server/game/Server/Protocol/Opcodes.h b/src/server/game/Server/Protocol/Opcodes.h
+index 8531a1d8..c8ae1ed7 100644
+--- a/src/server/game/Server/Protocol/Opcodes.h
++++ b/src/server/game/Server/Protocol/Opcodes.h
+@@ -1340,6 +1340,10 @@ enum Opcodes : uint16
+     SMSG_MULTIPLE_MOVES                             = 0x51E, // uncompressed version of SMSG_COMPRESSED_MOVES
+     CMSG_ANTICHEAT_ALERT                            = 0x51F, // Ascension client: local anti-tamper/anti-debug alert, see WorldSession::HandleAnticheatAlert
+     TC9_SMSG_READY_FOR_REDIRECT                     = 0x520,
++    CMSG_ESTERIA_FORM_LOOK                          = 0x525, // mod-custom-races: the two forms of a Worgen or Dracthyr
++    SMSG_ESTERIA_BODY_SHAPE                         = 0x575, // mod-custom-races: body sliders (BodyShapeWire.h)
++    SMSG_ESTERIA_RETAIL_LOOK                        = 0x576, // mod-custom-races: Retail customization (RetailLookWire.h)
++    SMSG_ESTERIA_FORM_LOOK_ACK                      = 0x577,
+     // -- CoA extension range (custom client; see mod-coa-challenges) --
+     SMSG_COA_CONFIG                                 = 0x58D,
+     SMSG_COA_CHALLENGE_ACTIVE_LIST                  = 0x596,
+diff --git a/src/server/game/Server/WorldSession.h b/src/server/game/Server/WorldSession.h
+index fd7533d2..6699ac53 100644
+--- a/src/server/game/Server/WorldSession.h
++++ b/src/server/game/Server/WorldSession.h
+@@ -732,7 +732,8 @@ public:                                                 // opcodes handlers
+     void HandleCharDeleteOpcode(WorldPacket& recvPacket);
+     void HandleCharCreateOpcode(WorldPacket& recvPacket);
+     void HandlePlayerLoginOpcode(WorldPacket& recvPacket);
+-    void HandleCharEnum(PreparedQueryResult result);
++    void HandleCharEnum(PreparedQueryResult result, PreparedQueryResult bodyShape, PreparedQueryResult retailLook);
++    void HandleEsteriaFormLookOpcode(WorldPacket& recvPacket);   // mod-custom-races
+     void HandlePlayerLoginFromDB(LoginQueryHolder const& holder);
+     void HandlePlayerLoginToCharInWorld(Player* pCurrChar);
+     void HandlePlayerLoginToCharOutOfWorld(Player* pCurrChar);
+diff --git a/src/server/shared/BodyShapeWire.h b/src/server/shared/BodyShapeWire.h
+new file mode 100755
+index 00000000..1ac31b47
+--- /dev/null
++++ b/src/server/shared/BodyShapeWire.h
+@@ -0,0 +1,113 @@
++#ifndef CHARACTER_BODY_SHAPE_WIRE_H
++#define CHARACTER_BODY_SHAPE_WIRE_H
++
++#include <array>
++#include <cstddef>
++#include <cstdint>
++
++// Shared verbatim between the client (Engine/Source/Retail/BodyShapeWire.h) and the server
++// (src/server/shared/BodyShapeWire.h). Do not let the copies drift.
++//
++// A character's body sliders travel as one fixed payload: a version byte, then 48 signed bytes, one per slot.
++// A slot holds round(value * 100) for its slider (-100..100; the two mesh sliders are 0..100). The slot -> slider
++// assignment below is the contract: never reorder or reuse a slot, only append (and bump Version if the meaning of
++// an existing slot changes). Unassigned slots must be zero.
++//
++// Framing (same scheme as the eye-lightning footer and the HXE character-list tail):
++//   - client -> server: an optional footer of payload + 'BSH1' appended after the normal create / customize /
++//     faction / race change payload and after any EYE1 footer, so it is the last thing in the packet.
++//   - server -> client: a tail block after SMSG_CHAR_ENUM: per character guid (8) + payload, then count (u32) and
++//     'BSE1' (u32), stripped by the native client before stock parsing.
++namespace CharacterBodyShape
++{
++    inline constexpr uint8_t Version = 1;
++    inline constexpr size_t Slots = 48;
++    inline constexpr size_t PayloadSize = 1 + Slots;
++    inline constexpr uint32_t FooterMagic = 0x31485342; // "BSH1"
++    inline constexpr uint32_t EnumMagic = 0x31455342;   // "BSE1"
++    inline constexpr size_t FooterSize = PayloadSize + 4;
++    inline constexpr size_t EnumStride = 8 + PayloadSize;
++
++    inline constexpr const char* SlotNames[] = {
++        "BreastSize", "ButtSize", "Height", "HeadSize", "NeckLength", "ShoulderWidth", "ArmLength", "ArmGirth",
++        "ChestSize", "WaistWidth", "TorsoLength", "HipWidth", "LegLength", "LegGirth", "JawSize", "JawLength",
++        "FaceWidth", "FaceLength", "BrowHeight", "BrowDepth", "EyeSize", "EyeSpacing", "EyeHeight", "NoseSize",
++        "NoseWidth", "NoseLength", "NoseHeight", "MouthWidth", "LipFullness", "MouthHeight", "ChinLength", "ChinDepth",
++        "CheekWidth", "CheekHeight", "JawWidth", "EarSize", "EarHeight",
++    };
++    inline constexpr size_t AssignedSlots = sizeof(SlotNames) / sizeof(SlotNames[0]);
++
++    using Values = std::array<int8_t, Slots>;
++
++    constexpr bool MeshSlot(size_t slot)
++    {
++        return slot < 2; // BreastSize, ButtSize
++    }
++
++    inline bool Valid(Values const& values)
++    {
++        for (size_t i = 0; i < Slots; ++i)
++        {
++            int const v = values[i];
++            if (v < -100 || v > 100 || (i >= AssignedSlots && v != 0) || (MeshSlot(i) && v < 0))
++                return false;
++        }
++        return true;
++    }
++
++    inline bool AllDefault(Values const& values)
++    {
++        for (int8_t v : values)
++            if (v != 0)
++                return false;
++        return true;
++    }
++
++    inline void WritePayload(uint8_t* out, Values const& values)
++    {
++        out[0] = Version;
++        for (size_t i = 0; i < Slots; ++i)
++            out[1 + i] = static_cast<uint8_t>(values[i]);
++    }
++
++    // False for a wrong version or out-of-range values; `values` is only written when the payload is good.
++    inline bool ReadPayload(uint8_t const* in, size_t size, Values& values)
++    {
++        if (!in || size != PayloadSize || in[0] != Version)
++            return false;
++        Values read{};
++        for (size_t i = 0; i < Slots; ++i)
++            read[i] = static_cast<int8_t>(in[1 + i]);
++        if (!Valid(read))
++            return false;
++        values = read;
++        return true;
++    }
++
++    // Strip an optional footer after the already-defined payload. Absent footer: present stays false, true is
++    // returned. A footer that is present but malformed returns false. ByteBuffer::resize resets its read cursor, so
++    // explicitly preserve it.
++    template <class Packet>
++    bool ReadTail(Packet& packet, bool& present, Values& values)
++    {
++        size_t const read = packet.rpos();
++        if (read > packet.size())
++            return false;
++        size_t const remaining = packet.size() - read;
++        if (remaining < FooterSize)
++            return true;
++        uint8_t const* tail = packet.contents() + packet.size() - FooterSize;
++        uint32_t const magic = uint32_t(tail[PayloadSize]) | uint32_t(tail[PayloadSize + 1]) << 8
++            | uint32_t(tail[PayloadSize + 2]) << 16 | uint32_t(tail[PayloadSize + 3]) << 24;
++        if (magic != FooterMagic)
++            return true;
++        if (!ReadPayload(tail, PayloadSize, values))
++            return false;
++        packet.resize(packet.size() - FooterSize);
++        packet.rpos(read);
++        present = true;
++        return true;
++    }
++}
++
++#endif
+diff --git a/src/server/shared/RetailLookWire.h b/src/server/shared/RetailLookWire.h
+new file mode 100755
+index 00000000..399abfd0
+--- /dev/null
++++ b/src/server/shared/RetailLookWire.h
+@@ -0,0 +1,122 @@
++#ifndef CHARACTER_RETAIL_LOOK_WIRE_H
++#define CHARACTER_RETAIL_LOOK_WIRE_H
++
++#include <array>
++#include <cstddef>
++#include <cstdint>
++
++// Shared verbatim between the client (Engine/Source/Retail/RetailLookWire.h) and the server
++// (src/server/shared/RetailLookWire.h). Do not let the copies drift.
++//
++// A character's full Retail customization, as the creator holds it: one selected choice index per option of the
++// race/sex model (the five stock bytes are included, so a remote client never has to infer them). The server treats it
++// as an opaque, size-checked blob; only the client knows what the indices mean.
++//
++// Payload (132 bytes): version(1) race(1) sex(1) count(1), then 64 little-endian u16 indices. Indices past `count` are
++// zero. The race/sex are the character's at the time of saving, so a stale look after a race change is ignored.
++//
++// Two Forms (Worgen Wolf/Human, Dracthyr Dragon/Visage): a look of the race's default model is version 1, as above.
++// A look that names its form is version 2: the form (1..4, see MaxForm) sits in the high nibble of the sex byte, the
++// size is unchanged. A reader that only knows version 1 rejects version 2 and falls back to the five stock bytes.
++//
++// Framing, same scheme as the body-slider and eye-lightning data:
++//   - client -> server: optional footer = payload + 'RLK1', after everything else (so it is the last thing in the
++//     create / customize / faction / race change packet, stripped before 'BSH1').
++//   - server -> client: tail block after SMSG_CHAR_ENUM: per character guid(8) + payload, then count(u32) + 'RLE1'.
++//   - server -> client in the world: SMSG_ESTERIA_RETAIL_LOOK = guid(8) + payload.
++namespace CharacterRetailLook
++{
++    inline constexpr uint8_t Version = 1;
++    inline constexpr uint8_t VersionForm = 2;
++    inline constexpr uint8_t MaxForm = 6;
++    inline constexpr size_t MaxOptions = 64;
++    inline constexpr size_t PayloadSize = 4 + 2 * MaxOptions;
++    inline constexpr uint32_t FooterMagic = 0x314B4C52; // "RLK1"
++    inline constexpr uint32_t EnumMagic = 0x31454C52;   // "RLE1"
++    inline constexpr uint32_t ParkedMagic = 0x31504C52; // "RLP1": same layout as RLE1, the Two Forms look that is not showing
++    inline constexpr size_t FooterSize = PayloadSize + 4;
++    inline constexpr size_t EnumStride = 8 + PayloadSize;
++
++    inline constexpr uint8_t FirstFormForRace(uint32_t race)
++    {
++        return race == 13 ? 1 : (race == 54 || race == 58) ? 3 : 0; // CoA: Worgen, Dracthyr
++    }
++
++    struct Look
++    {
++        uint8_t race = 0;
++        uint8_t sex = 0;
++        uint8_t form = 0; // 0: the race's default model (version 1)
++        uint8_t count = 0;
++        std::array<uint16_t, MaxOptions> index{};
++    };
++
++    inline bool Valid(Look const& look)
++    {
++        if (!look.race || look.sex > 1 || look.form > MaxForm || look.count > MaxOptions)
++            return false;
++        for (size_t i = look.count; i < MaxOptions; ++i)
++            if (look.index[i] != 0)
++                return false;
++        return true;
++    }
++
++    inline void WritePayload(uint8_t* out, Look const& look)
++    {
++        out[0] = look.form ? VersionForm : Version;
++        out[1] = look.race;
++        out[2] = static_cast<uint8_t>(look.sex | (look.form << 4));
++        out[3] = look.count;
++        for (size_t i = 0; i < MaxOptions; ++i)
++        {
++            out[4 + 2 * i] = static_cast<uint8_t>(look.index[i] & 0xFF);
++            out[5 + 2 * i] = static_cast<uint8_t>(look.index[i] >> 8);
++        }
++    }
++
++    // False for a wrong version or an invalid look; `look` is only written when the payload is good.
++    inline bool ReadPayload(uint8_t const* in, size_t size, Look& look)
++    {
++        if (!in || size != PayloadSize || (in[0] != Version && in[0] != VersionForm))
++            return false;
++        Look read;
++        read.race = in[1];
++        read.sex = in[0] == VersionForm ? static_cast<uint8_t>(in[2] & 0x0F) : in[2];
++        read.form = in[0] == VersionForm ? static_cast<uint8_t>(in[2] >> 4) : uint8_t{0};
++        if (in[0] == VersionForm && read.form == 0)
++            return false;
++        read.count = in[3];
++        for (size_t i = 0; i < MaxOptions; ++i)
++            read.index[i] = static_cast<uint16_t>(in[4 + 2 * i] | (in[5 + 2 * i] << 8));
++        if (!Valid(read))
++            return false;
++        look = read;
++        return true;
++    }
++
++    // Strip an optional footer. Absent: present stays false and true is returned; present but malformed: false.
++    // ByteBuffer::resize resets its read cursor, so explicitly preserve it.
++    template <class Packet>
++    bool ReadTail(Packet& packet, bool& present, Look& look)
++    {
++        size_t const read = packet.rpos();
++        if (read > packet.size())
++            return false;
++        size_t const remaining = packet.size() - read;
++        if (remaining < FooterSize)
++            return true;
++        uint8_t const* tail = packet.contents() + packet.size() - FooterSize;
++        uint32_t const magic = uint32_t(tail[PayloadSize]) | uint32_t(tail[PayloadSize + 1]) << 8
++            | uint32_t(tail[PayloadSize + 2]) << 16 | uint32_t(tail[PayloadSize + 3]) << 24;
++        if (magic != FooterMagic)
++            return true;
++        if (!ReadPayload(tail, PayloadSize, look))
++            return false;
++        packet.resize(packet.size() - FooterSize);
++        packet.rpos(read);
++        present = true;
++        return true;
++    }
++}
++
++#endif

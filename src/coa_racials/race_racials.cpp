@@ -1135,6 +1135,13 @@ class spell_race_visage : public SpellScript
         if (!player)
             return;
 
+        // CoA Custom's x64 client: with a saved Dragon/Visage pair the client swaps the model itself, no morph
+        if (player->ToggleRetailForm())
+        {
+            player->RemoveAurasDueToSpell(SPELL_VISAGE_FORM);
+            return;
+        }
+
         if (player->HasAura(SPELL_VISAGE_FORM))
             player->RemoveAurasDueToSpell(SPELL_VISAGE_FORM);
         else
@@ -1144,6 +1151,23 @@ class spell_race_visage : public SpellScript
     void Register() override
     {
         OnEffectHitTarget += SpellEffectFn(spell_race_visage::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+// Worgen: Two Forms (110690) switches between the saved Wolf and Human looks (CoA Custom's x64 client)
+class spell_race_two_forms : public SpellScript
+{
+    PrepareSpellScript(spell_race_two_forms);
+
+    void HandleDummy(SpellEffIndex /*effIndex*/)
+    {
+        if (Player* player = GetCaster()->ToPlayer())
+            player->ToggleRetailForm();
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_race_two_forms::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
     }
 };
 
@@ -1684,6 +1708,7 @@ void AddSC_race_racials()
     RegisterSpellScript(spell_race_return_to_camp);
     RegisterSpellScript(spell_race_rummage_your_bag);
     RegisterSpellScript(spell_race_visage);
+    RegisterSpellScript(spell_race_two_forms);
     RegisterSpellScript(spell_race_visage_form);
     RegisterSpellScript(spell_race_chosen_identity);
     RegisterSpellScript(spell_race_ingest_minerals);

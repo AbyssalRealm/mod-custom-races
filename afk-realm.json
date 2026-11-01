@@ -12,6 +12,12 @@
    "target": "core",
    "file": "patches/core-customize-extra.patch",
    "why": "The game client can append the sixth appearance value (or Haranir's 64-bit value) to the customize packet; the server stores it with the character instead of keeping the old value."
+  },
+  {
+   "name": "Two forms and Retail looks are saved",
+   "target": "core",
+   "file": "patches/core-race-forms.patch",
+   "why": "CoA Custom's x64 client keeps the second form of a Worgen or Dracthyr (Human, Visage), its full Retail customization and the body sliders apart from the five stock bytes. Its own worldserver saved them; a server built from the CoA core did not, so the human form was lost after every login. The patch adds the three tables, the client's form-look message and its answers, sends the looks with the character list and to everyone in view, and makes Visage and Two Forms switch between the saved forms."
   }
  ],
  "client": {

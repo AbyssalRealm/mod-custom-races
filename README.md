@@ -189,14 +189,26 @@ still supplies the `dxvk.conf`, DXVK 2.7.1 `d3d9.dll` and the equipment-fitting 
 DLL with a build whose fingerprint differs, AFK Realm deliberately leaves it alone and the tool or an upstream fix
 is needed.
 
+### Two forms and Retail looks (CoA Custom's x64 client)
+
+CoA Custom 1.9.3 and newer keep a Worgen's or Dracthyr's second form (Human, Visage), the full Retail
+customization and the body sliders apart from the five stock bytes, in `character_form_look`,
+`character_retail_look` and `character_body_shape` (created by `data/sql/db-characters`). CoA Custom's own
+`worldserver.exe` saves them; a server built from the CoA core did not, so the second form was gone after every
+login. `patches/core-race-forms.patch` adds the client's messages (`CMSG_ESTERIA_FORM_LOOK` 0x525, its answer 0x577,
+`SMSG_ESTERIA_RETAIL_LOOK` 0x576, `SMSG_ESTERIA_BODY_SHAPE` 0x575), stores the looks a new character brings,
+sends them with the character list (RLE1, RLP1, BSE1) and to every player in view, and makes Visage (Dracthyr)
+and Two Forms (Worgen, 110690, `data/sql/db-world`) switch between the two saved forms. Ported from CoA Custom's
+`races-core.patch` (CoA Custom 1.9.5); the wire format is its `RetailLookWire.h` / `BodyShapeWire.h`, kept verbatim.
+
 ## Install
 
 **With AFK Realm** (0.9.1 or newer): *Modules*, add the module, build. *Modules › Custom races* chooses the races and
 their base races and gives them their numbers; *Modules › Game client › Install* builds the client patch from your
 game client and puts it into your game. Every player needs the client patch (*Export as ZIP* gives it to the others).
 
-**By hand:** copy the module into `modules/` of the CoA core, apply `patches/core-custom-races.patch` and then
-`patches/core-customize-extra.patch`, build, set the
+**By hand:** copy the module into `modules/` of the CoA core, apply `patches/core-custom-races.patch`, then
+`patches/core-customize-extra.patch` and `patches/core-race-forms.patch`, build, set the
 options (the values of each race from the client's `ChrRaces.dbc`; the `.conf.dist` shows them for the Goblin). The client patch is an MPQ that loads after the client's own (for example `Data\patch-Y.MPQ`); what it holds
 for each chosen race is described in `afk-realm.json` (`client.patch`, one set of changes done `forEach` race): the race's row of `ChrRaces.dbc` made playable for
 the faction of its base race (copied to its number when it has none of its own), its classes in `CharBaseInfo.dbc`,
