@@ -664,7 +664,7 @@ index fd7533d2..6699ac53 100644
      void HandleCharCreateOpcode(WorldPacket& recvPacket);
      void HandlePlayerLoginOpcode(WorldPacket& recvPacket);
 -    void HandleCharEnum(PreparedQueryResult result);
-+    void HandleCharEnum(PreparedQueryResult result, PreparedQueryResult bodyShape, PreparedQueryResult retailLook);
++    void HandleCharEnum(PreparedQueryResult result, PreparedQueryResult bodyShape = nullptr, PreparedQueryResult retailLook = nullptr);
 +    void HandleEsteriaFormLookOpcode(WorldPacket& recvPacket);   // mod-custom-races
      void HandlePlayerLoginFromDB(LoginQueryHolder const& holder);
      void HandlePlayerLoginToCharInWorld(Player* pCurrChar);
