@@ -1,3 +1,17 @@
+diff --git a/data/sql/updates/pending_db_characters/rev_2026110100000000001_custom_races_forms.sql b/data/sql/updates/pending_db_characters/rev_2026110100000000001_custom_races_forms.sql
+new file mode 100644
+--- /dev/null
++++ b/data/sql/updates/pending_db_characters/rev_2026110100000000001_custom_races_forms.sql
+@@ -0,0 +1,9 @@
++-- mod-custom-races (its core patch): the looks of CoA Custom's x64 client (CoA Custom 1.9.3 and newer): the Retail
++-- customization, the second form of a Worgen or Dracthyr (Two Forms) and the body sliders, one row per character.
++-- Here, in the core's own updates, because the core prepares its statements on these tables right after them.
++CREATE TABLE IF NOT EXISTS `character_body_shape` (`guid` int unsigned NOT NULL, `data` binary(49) NOT NULL, PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
++CREATE TABLE IF NOT EXISTS `character_retail_look` (`guid` int unsigned NOT NULL, `data` binary(132) NOT NULL, PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
++CREATE TABLE IF NOT EXISTS `character_form_look` (`guid` int unsigned NOT NULL, `data` binary(132) NOT NULL, PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
++-- Dracthyr: Chosen Identity is gone (Visage switches between the two saved forms); Worgen: Two Forms (110690)
++DELETE FROM `character_spell` WHERE `spell` = 110687;
++INSERT IGNORE INTO `character_spell` (`guid`, `spell`, `specMask`) SELECT `guid`, 110690, 255 FROM `characters` WHERE `race` = 13;
 diff --git a/src/server/coa/AscensionCompat.cpp b/src/server/coa/AscensionCompat.cpp
 index d03fcb62..05469666 100644
 --- a/src/server/coa/AscensionCompat.cpp

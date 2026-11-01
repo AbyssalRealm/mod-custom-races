@@ -193,7 +193,7 @@ is needed.
 
 CoA Custom 1.9.3 and newer keep a Worgen's or Dracthyr's second form (Human, Visage), the full Retail
 customization and the body sliders apart from the five stock bytes, in `character_form_look`,
-`character_retail_look` and `character_body_shape` (created by `data/sql/db-characters`). CoA Custom's own
+`character_retail_look` and `character_body_shape` (created by the core patch, in the core's own character updates). CoA Custom's own
 `worldserver.exe` saves them; a server built from the CoA core did not, so the second form was gone after every
 login. `patches/core-race-forms.patch` adds the client's messages (`CMSG_ESTERIA_FORM_LOOK` 0x525, its answer 0x577,
 `SMSG_ESTERIA_RETAIL_LOOK` 0x576, `SMSG_ESTERIA_BODY_SHAPE` 0x575), stores the looks a new character brings,
