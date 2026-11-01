@@ -201,6 +201,11 @@ sends them with the character list (RLE1, RLP1, BSE1) and to every player in vie
 and Two Forms (Worgen, 110690, `data/sql/db-world`) switch between the two saved forms. Ported from CoA Custom's
 `races-core.patch` (CoA Custom 1.9.5); the wire format is its `RetailLookWire.h` / `BodyShapeWire.h`, kept verbatim.
 
+A race change, faction change or customization keeps the looks right as well (CoA Custom's own server did not): the
+client sends the new Retail look and body sliders at the end of those packets too, and they are stored with the
+change. A new race drops the looks of the old one, a new sex the parked form; before, a character changed to
+Dracthyr or Worgen kept the default look and a broken second form.
+
 ## Install
 
 **With AFK Realm** (0.9.1 or newer): *Modules*, add the module, build. *Modules › Custom races* chooses the races and
