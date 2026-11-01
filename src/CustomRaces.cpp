@@ -416,7 +416,10 @@ namespace
     }
 
     /// A number no race has any more: a race was given up (CustomRaces.<race>.Id set to 0) or left the settings. Its
-    /// characters stay the base race they had for good, and its rows go.
+    /// characters play their base race, and its rows go. They are parked like the characters of a race switched off
+    /// (custom_races_moved keeps their race and looks): a race that comes back under its number gives them back.
+    /// Before, they stayed the base race for good - a deleted or emptied mod_custom_races.conf turned every character
+    /// of every custom race into its base race, a little more with each update.
     void FreeNumbers()
     {
         for (uint8 id = 1; id < 128; ++id)
@@ -433,12 +436,14 @@ namespace
                 "WHERE c.`race` = {}", id);
             if (count && (*count)[0].Get<uint64>())
             {
+                CharacterDatabase.DirectExecute("REPLACE INTO `custom_races_moved` (`guid`, `race`, `base`, `skin`, `face`, `hairStyle`, "
+                    "`hairColor`, `facialStyle`) SELECT c.`guid`, c.`race`, b.`base`, c.`skin`, c.`face`, c.`hairStyle`, c.`hairColor`, "
+                    "c.`facialStyle` FROM `characters` c JOIN `custom_races_base` b ON b.`race` = c.`race` WHERE c.`race` = {}", id);
                 CharacterDatabase.DirectExecute("UPDATE `characters` c JOIN `custom_races_base` b ON b.`race` = c.`race` SET c.`race` = b.`base`, "
                     "c.`skin` = 0, c.`face` = 0, c.`hairStyle` = 0, c.`hairColor` = 0, c.`facialStyle` = 0 WHERE c.`race` = {}", id);
-                LOG_INFO("module", "mod-custom-races: race number {} was given up; its {} character(s) keep their base race",
-                    id, (*count)[0].Get<uint64>());
+                LOG_WARN("module", "mod-custom-races: race number {} is in no race of the settings; its {} character(s) play their base "
+                    "race until a race gets number {} again", id, (*count)[0].Get<uint64>(), id);
             }
-            CharacterDatabase.DirectExecute("DELETE FROM `custom_races_moved` WHERE `race` = {}", id);
             CharacterDatabase.DirectExecute("DELETE FROM `custom_races_base` WHERE `race` = {}", id);
         }
     }
@@ -780,8 +785,21 @@ public:
             "`EmotesTextId` INT NOT NULL DEFAULT '0', `RaceId` INT NOT NULL DEFAULT '0', `SexId` INT NOT NULL DEFAULT '0', "
             "`SoundId` INT NOT NULL DEFAULT '0', PRIMARY KEY (`Id`) USING BTREE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
             "COMMENT='mod-custom-races: the voices of its races, lent from their base races'");
-        Renumber();
-        FreeNumbers();
+        // A settings file without any race (deleted, or made again from the .dist) is not "every race given up": the
+        // characters are left as they are until races are back in it.
+        if (races.empty())
+        {
+            QueryResult had = CharacterDatabase.Query("SELECT COUNT(*) FROM `custom_races_base`");
+            if (had && (*had)[0].Get<uint64>())
+                LOG_ERROR("module", "mod-custom-races: mod_custom_races.conf describes no race (no CustomRaces.<race>.Source); the "
+                    "characters of the custom races are left untouched. Set the races up again (AFK Realm: CoA Custom > Install / "
+                    "update, or Modules > Custom races) or put the old file back.");
+        }
+        else
+        {
+            Renumber();
+            FreeNumbers();
+        }
         for (RaceDef const& race : races)
         {
             if (!race.Id)
