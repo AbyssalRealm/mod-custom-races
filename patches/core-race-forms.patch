@@ -318,7 +318,7 @@ index e87a16f2..9ebbfa68 100644
              // caster client send data at target visibility change (adding to
              // client)
 diff --git a/src/server/game/Handlers/CharacterHandler.cpp b/src/server/game/Handlers/CharacterHandler.cpp
-index 3fe5eb1f..46749815 100644
+index 3fe5eb1f..fe0e0792 100644
 --- a/src/server/game/Handlers/CharacterHandler.cpp
 +++ b/src/server/game/Handlers/CharacterHandler.cpp
 @@ -219,6 +219,19 @@ bool LoginQueryHolder::Initialize()
@@ -341,7 +341,7 @@ index 3fe5eb1f..46749815 100644
      return res;
  }
  
-@@ -239,6 +252,121 @@ namespace
+@@ -239,6 +252,123 @@ namespace
      }
  }
  
@@ -448,7 +448,9 @@ index 3fe5eb1f..46749815 100644
 +            stmt->SetData(1, payload);
 +            trans->Append(stmt);
 +        }
-+        if (looks.hasShape)
++        // The customize screen of the client shows no body sliders and sends them all at zero: that is "not changed",
++        // not "back to default" (a .character customize took every slider away). A new race starts from what it sent.
++        if (looks.hasShape && (raceChanged || !CharacterBodyShape::AllDefault(looks.shape)))
 +        {
 +            std::vector<uint8> payload(CharacterBodyShape::PayloadSize);
 +            CharacterBodyShape::WritePayload(payload.data(), looks.shape);
@@ -463,7 +465,7 @@ index 3fe5eb1f..46749815 100644
  uint64 TakeCreatedExtraAppearance(CharacterCreateInfo const* createInfo)
  {
      std::lock_guard<std::mutex> guard(sCreatedExtraLock);
-@@ -250,8 +378,36 @@ uint64 TakeCreatedExtraAppearance(CharacterCreateInfo const* createInfo)
+@@ -250,8 +380,36 @@ uint64 TakeCreatedExtraAppearance(CharacterCreateInfo const* createInfo)
      return value;
  }
  
@@ -501,7 +503,7 @@ index 3fe5eb1f..46749815 100644
      WorldPacket data(SMSG_CHAR_ENUM, 100);                  // we guess size
  
      uint8 num = 0;
-@@ -275,6 +431,24 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
+@@ -275,6 +433,24 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
              {
                  _legitCharacters.insert(guid);
                  ++num;
@@ -526,7 +528,7 @@ index 3fe5eb1f..46749815 100644
                  uint64 const extra = (*result)[result->GetFieldCount() - 1].Get<uint64>();
                  switch (ExtraAppearanceKind((*result)[2].Get<uint8>()))
                  {
-@@ -304,6 +478,21 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
+@@ -304,6 +480,21 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
          data.append(extraWide);
          data << extraWideCount << uint32(0x32455848);   // HXE2
      }
@@ -548,7 +550,7 @@ index 3fe5eb1f..46749815 100644
  
      SendPacket(&data);
  }
-@@ -322,7 +511,27 @@ void WorldSession::HandleCharEnumOpcode(WorldPacket& /*recvData*/)
+@@ -322,7 +513,27 @@ void WorldSession::HandleCharEnumOpcode(WorldPacket& /*recvData*/)
      stmt->SetData(0, PET_SAVE_AS_CURRENT);
      stmt->SetData(1, GetAccountId());
  
@@ -577,7 +579,7 @@ index 3fe5eb1f..46749815 100644
  }
  
  void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
-@@ -340,6 +549,26 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
+@@ -340,6 +551,26 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
               >> createInfo->FacialHair
               >> createInfo->OutfitId;
  
@@ -604,7 +606,7 @@ index 3fe5eb1f..46749815 100644
      // mod-custom-races: a race of EsteriaAppearance.dll keeps more of its looks: Highmountain Tauren and Earthen a sixth
      // byte (the outfit byte, unused by the core), Haranir a 64-bit number and the mark HRC1 after the packet. A game
      // client without the DLL sends neither; the character then has the first choice of each.
-@@ -686,6 +915,23 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
+@@ -686,6 +917,23 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
              newChar->SaveToDB(characterTransaction, true, false);
              createInfo->CharCount++;
  
@@ -628,7 +630,7 @@ index 3fe5eb1f..46749815 100644
              LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_REP_REALM_CHARACTERS);
              stmt->SetData(0, createInfo->CharCount);
              stmt->SetData(1, GetAccountId());
-@@ -1821,6 +2067,16 @@ void WorldSession::HandleCharCustomize(WorldPacket& recvData)
+@@ -1821,6 +2069,16 @@ void WorldSession::HandleCharCustomize(WorldPacket& recvData)
               >> customizeInfo->FacialHair
               >> customizeInfo->Face;
  
@@ -645,7 +647,7 @@ index 3fe5eb1f..46749815 100644
      // mod-custom-races: EsteriaAppearance.dll appends the looks beyond the five stock bytes.
      // The stock client ends here; only the patched client sends this extension.
      uint32 const extraSize = recvData.size() - recvData.rpos();
-@@ -1928,6 +2184,8 @@ void WorldSession::HandleCharCustomizeCallback(std::shared_ptr<CharacterCustomiz
+@@ -1928,6 +2186,8 @@ void WorldSession::HandleCharCustomizeCallback(std::shared_ptr<CharacterCustomiz
  
      /// Customize
      Player::Customize(customizeInfo.get(), trans);
@@ -654,7 +656,7 @@ index 3fe5eb1f..46749815 100644
  
      /// Name Change and update atLogin flags
      {
-@@ -2131,6 +2389,90 @@ void WorldSession::HandleEquipmentSetUse(WorldPacket& recvData)
+@@ -2131,6 +2391,90 @@ void WorldSession::HandleEquipmentSetUse(WorldPacket& recvData)
      SendPacket(&data);
  }
  
@@ -745,7 +747,7 @@ index 3fe5eb1f..46749815 100644
  void WorldSession::HandleCharFactionOrRaceChange(WorldPacket& recvData)
  {
      std::shared_ptr<CharacterFactionChangeInfo> factionChangeInfo = std::make_shared<CharacterFactionChangeInfo>();
-@@ -2155,6 +2497,14 @@ void WorldSession::HandleCharFactionOrRaceChange(WorldPacket& recvData)
+@@ -2155,6 +2499,14 @@ void WorldSession::HandleCharFactionOrRaceChange(WorldPacket& recvData)
               >> factionChangeInfo->Face
               >> factionChangeInfo->Race;
  
@@ -760,7 +762,7 @@ index 3fe5eb1f..46749815 100644
      // pussywizard:
      if (ObjectAccessor::FindConnectedPlayer(factionChangeInfo->Guid) || sWorldSessionMgr->FindOfflineSessionForCharacterGUID(factionChangeInfo->Guid.GetCounter()))
      {
-@@ -2785,6 +3135,9 @@ void WorldSession::HandleCharFactionOrRaceChangeCallback(std::shared_ptr<Charact
+@@ -2785,6 +3137,9 @@ void WorldSession::HandleCharFactionOrRaceChangeCallback(std::shared_ptr<Charact
      stmt->SetData(1, lowGuid);
      trans->Append(stmt);
  
