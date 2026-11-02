@@ -1059,6 +1059,31 @@ public:
     }
 };
 
+/// The game core sets the gender of a unit from creature_model_info whenever its display changes (Unit::SetDisplayId).
+/// The displays of the new races have no row there, so their gender is left as the last display had it: a druid
+/// that leaves cat or bear form keeps the gender of the form's model (female, or none). The game client builds the
+/// face and skin of a player from race and gender when the body comes back, so a man got the face textures of a woman
+/// of his race (Zandalari druids after a shapeshift) until the next login, which reads the gender from the character
+/// again. The stock races have rows for their displays and were never affected. So when a character of a race of
+/// ours takes its own body back, its gender is set from the character again.
+class CustomRacesUnit : public UnitScript
+{
+public:
+    CustomRacesUnit() : UnitScript("CustomRacesUnit", true, { UNITHOOK_ON_DISPLAYID_CHANGE }) { }
+
+    void OnDisplayIdChange(Unit* unit, uint32 displayId) override
+    {
+        Player* player = unit ? unit->ToPlayer() : nullptr;
+        if (!player || !ActiveRace(player))
+            return;
+        if (displayId != player->GetNativeDisplayId())
+            return;
+        uint8 gender = player->GetByteValue(PLAYER_BYTES_3, PLAYER_BYTES_3_OFFSET_GENDER);
+        if (gender <= GENDER_FEMALE && player->getGender() != gender)
+            player->SetByteValue(UNIT_FIELD_BYTES_0, 2, gender);   // race, class, gender, power
+    }
+};
+
 // The racial abilities of CoA Custom (Bull Rush and the passives of the Highmountain Tauren among them) are in
 // coa_racials/, taken over from CoA Custom as a whole.
 
@@ -1066,4 +1091,5 @@ void AddSC_custom_races()
 {
     new CustomRacesWorld();
     new CustomRacesPlayer();
+    new CustomRacesUnit();
 }
