@@ -1,4 +1,5 @@
 {
+ "requires": ["mod-classic-classes"],
  "about": "Read by AFK Realm (https://github.com/aspollon/AFK-Realm) when it builds the server. Without AFK Realm, apply the patch and build the client patch yourself: see README.md.",
  "patches": [
   {

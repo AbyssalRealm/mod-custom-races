@@ -4,6 +4,10 @@
 
 More playable races for **Conquest of Azeroth** (CoA), an AzerothCore module.
 
+> **Using CoA Custom?** You need this module on your server: CoA Custom brings the races to the game client, this
+> module makes them playable on the server. AFK Realm installs it together with mod-classic-classes (`requires` in
+> `afk-realm.json`), which the human-based races need for druids and the other classic classes.
+
 The game client of Conquest of Azeroth already carries the models, skins and hair of many races no player can choose:
 Goblins, Worgen, Pandaren, Vulpera, Vrykul and more. This module makes them playable. It brings no models or textures
 of its own: its client patch is built from the player's own game client.
