@@ -532,6 +532,7 @@ namespace
         WorldDatabase.DirectExecute("DELETE FROM `spell_dbc` WHERE `ID` = {}", spell);
         WorldDatabase.DirectExecute("DELETE FROM `spell_script_names` WHERE `spell_id` = {}", spell);
         WorldDatabase.DirectExecute("DELETE FROM `spell_proc` WHERE `SpellId` = {}", spell);
+        WorldDatabase.DirectExecute("DELETE FROM `coa_client_spell_description` WHERE `ID` = {}", spell);
     }
 
     /// Runs the racial files of the races that are on and keeps their spells in `custom_races_racials`; the rows of

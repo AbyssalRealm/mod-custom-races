@@ -1,0 +1,62 @@
+﻿diff --git a/Engine/Source/Model2/M2Model.cpp b/Engine/Source/Model2/M2Model.cpp
+index 599679db..a5b505f3 100644
+--- a/Engine/Source/Model2/M2Model.cpp
++++ b/Engine/Source/Model2/M2Model.cpp
+@@ -2699,6 +2699,10 @@ void CM2Model::FindKey(M2ModelBoneSeq* sequence, const M2TrackBase& track, uint3
+                 uint32_t mid = (high + key) >> 1;
+ 
+                 if (time < keys[mid]) {
++                    if (mid == 0) {
++                        key = 0;
++                        break;
++                    }
+                     high = mid - 1;
+                 } else {
+                     key = mid + 1;
+diff --git a/Engine/Source/Model2/M2Shared.cpp b/Engine/Source/Model2/M2Shared.cpp
+index 1e7983f6..de472766 100644
+--- a/Engine/Source/Model2/M2Shared.cpp
++++ b/Engine/Source/Model2/M2Shared.cpp
+@@ -199,6 +199,15 @@ int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2Array<M2Array
+     return 1;
+ }
+ 
++static bool SequenceArrayFits(uint32_t offset, uint32_t count, uint32_t elementSize)
++{
++    if (!s_sequenceData)
++        return true;
++
++    int64_t const start = static_cast<int64_t>(static_cast<int32_t>(offset));
++    return start >= 0 && static_cast<uint64_t>(start) + static_cast<uint64_t>(count) * elementSize <= s_sequenceSize;
++}
++
+ // INLINED
+ int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2TrackBase& track) {
+     if (s_sequenceIndex == 0xFFFFFFFF) {
+@@ -214,6 +223,9 @@ int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2TrackBase& tr
+             return 0;
+         }
+     } else if (s_sequenceIndex < track.m_sequenceTimes.m_count) {
++        if (!SequenceArrayFits(track.m_sequenceTimes[s_sequenceIndex].m_offset,
++                track.m_sequenceTimes[s_sequenceIndex].m_count, sizeof(uint32_t)))
++            return 0;
+         track.m_sequenceTimes[s_sequenceIndex].Relocate(s_sequenceData);
+     }
+ 
+@@ -249,10 +261,16 @@ int32_t M2Init(uint8_t* base, uint32_t size, const M2Data& data, M2Track<T>& tra
+         }
+     } else {
+         if (s_sequenceIndex < track.m_sequenceTimes.m_count) {
++            if (!SequenceArrayFits(track.m_sequenceTimes[s_sequenceIndex].m_offset,
++                    track.m_sequenceTimes[s_sequenceIndex].m_count, sizeof(uint32_t)))
++                return 0;
+             track.m_sequenceTimes[s_sequenceIndex].Relocate(s_sequenceData);
+         }
+ 
+         if (s_sequenceIndex < track.m_sequenceKeys.m_count) {
++            if (!SequenceArrayFits(track.m_sequenceKeys[s_sequenceIndex].m_offset,
++                    track.m_sequenceKeys[s_sequenceIndex].m_count, sizeof(T)))
++                return 0;
+             track.m_sequenceKeys[s_sequenceIndex].Relocate(s_sequenceData);
+         }
+     }
