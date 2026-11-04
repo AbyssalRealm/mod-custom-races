@@ -34,6 +34,14 @@
 #
 
 CustomRaces.Enable = 1
+#
+#    CoACustomRaces.Enable
+#        Description: The master switch of the CoA core for the custom race looks. It must be in this
+#                     loaded module config; the old coa_custom_races.conf is not loaded by the current core.
+#        Default:     1 - Enabled
+#                     0 - Disabled
+#
+CoACustomRaces.Enable = 1
 
 #
 #    CoACustomRaces.BotsEnable
