@@ -25,6 +25,12 @@
    "target": "core",
    "file": "patches/core-racial-sync.patch",
    "why": "The client's spell-patch stream sends a learned message for the spell rows it streams, which made mounts and racials appear twice. The patch remembers which spells this login actually streamed and then re-learns only the race's spells from custom_races_racials, so every custom race gets its racials once and the client's own spell rows stay untouched."
+  },
+  {
+   "name": "The vmap extractor survives CoA's test maps",
+   "target": "core",
+   "file": "patches/core-vmap-extractor.patch",
+   "why": "CoA's test maps 1727, 1730 and 1731 crash the retail vmap4_extractor. Map 1730 is the last Map.dbc row, so the crash also stopped ExtractGameobjectModels and left vmaps and mmaps empty (and the map creation looked frozen). The patch skips those maps after a printed notice; AFK_VMAP_SKIP_MAPS overrides the list."
   }
  ],
  "client": {
