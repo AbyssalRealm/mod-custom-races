@@ -26,8 +26,8 @@ index d3162b8..f272b00 100644
 +        uint32 const spellId = (*result)[0].Get<uint32>();
 +        if (!player->HasSpell(spellId) || !streamedSpells.contains(spellId))
 +          continue;
-+        player->removeSpell(spellId, SPEC_MASK_ALL, false);
-+        player->learnSpell(spellId);
++        player->SendLearnPacket(spellId, false, true);
++        player->SendLearnPacket(spellId, true);
 +      } while (result->NextRow());
 +
      for (SuperTrackPatchRow const &row : rows.SuperTracks)

@@ -455,6 +455,7 @@ namespace
     /// run can take them back out.
     struct RacialFile
     {
+        uint64 Hash = 0;                                 // FNV-1a of the file as it was read
         std::vector<uint32> Spells;
         std::vector<std::string> Statements;
     };
@@ -487,10 +488,21 @@ namespace
         std::string line, statement;
         bool open = false;                                   // a text in quotes runs on into the next line
         uint32 skipped = 0;
+        uint64 hash = 14695981039346656037ULL; // FNV-1a: unchanged files are not run again
+        auto mix = [&hash](std::string const& text)
+        {
+            for (unsigned char c : text)
+            {
+                hash ^= c;
+                hash *= 1099511628211ULL;
+            }
+        };
         while (std::getline(in, line))
         {
             if (!line.empty() && line.back() == '\r')
                 line.pop_back();
+            mix(line);
+            mix("\n");
 
             if (statement.empty())
             {
@@ -524,6 +536,7 @@ namespace
             ++skipped;
         if (skipped)
             LOG_ERROR("module", "mod-custom-races: {} ends in the middle of a statement; that statement is left out (start AFK Realm's races page once to write the file again)", path.string());
+        file.Hash = hash;
         return !file.Statements.empty();
     }
 
@@ -543,6 +556,9 @@ namespace
         WorldDatabase.DirectExecute("CREATE TABLE IF NOT EXISTS `custom_races_racials` (`race` TINYINT UNSIGNED NOT NULL, "
             "`spell` INT UNSIGNED NOT NULL, PRIMARY KEY (`race`, `spell`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
             "COMMENT='mod-custom-races: racial rows of each race, as taken from the server data folder'");
+        WorldDatabase.DirectExecute("CREATE TABLE IF NOT EXISTS `custom_races_racial_files` (`race` TINYINT UNSIGNED NOT NULL, "
+            "`hash` BIGINT UNSIGNED NOT NULL DEFAULT 0, PRIMARY KEY (`race`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+            "COMMENT='mod-custom-races: content hash of the last racial file applied for each race'");
 
         // Where AFK Realm wrote the files: CustomRaces.RacialsFolder (it writes it there since it reads the racials of CoA
         // Custom), or else afk-realm\\races of the server data folder, as before.
@@ -569,6 +585,15 @@ namespace
             if (ReadRacialFile(dir / (race->Key + ".sql"), file) && !file.Spells.empty())
                 files[race->Id] = std::move(file);
         }
+
+        // A race that is off or gone gets its file row back the next time it is switched on.
+        if (QueryResult stale = WorldDatabase.Query("SELECT `race` FROM `custom_races_racial_files`"))
+            do
+            {
+                uint8 const race = (*stale)[0].Get<uint8>();
+                if (!files.count(race))
+                    WorldDatabase.DirectExecute("DELETE FROM `custom_races_racial_files` WHERE `race` = {}", race);
+            } while (stale->NextRow());
 
         auto inFile = [&files](uint8 race, uint32 spell)
         {
@@ -603,13 +628,27 @@ namespace
         uint32 taken = 0;
         for (auto const& pair : files)
         {
-            for (std::string const& statement : pair.second.Statements)
-                WorldDatabase.DirectExecute(statement);
+            uint64 hash = 0;
+            bool known = false;
+            if (QueryResult row = WorldDatabase.Query("SELECT `hash` FROM `custom_races_racial_files` WHERE `race` = {}", pair.first))
+            {
+                hash = (*row)[0].Get<uint64>();
+                known = true;
+            }
+
+            // Run the file only when it changed. An unchanged file has already written its rows; running it again
+            // would overwrite spell_dbc changes made by hand between restarts.
+            if (!known || hash != pair.second.Hash)
+            {
+                for (std::string const& statement : pair.second.Statements)
+                    WorldDatabase.DirectExecute(statement);
+                WorldDatabase.DirectExecute("REPLACE INTO `custom_races_racial_files` (`race`, `hash`) VALUES ({}, {})", pair.first, pair.second.Hash);
+                ++taken;
+            }
 
             WorldDatabase.DirectExecute("DELETE FROM `custom_races_racials` WHERE `race` = {}", pair.first);
             for (uint32 spell : pair.second.Spells)
                 WorldDatabase.DirectExecute("REPLACE INTO `custom_races_racials` (`race`, `spell`) VALUES ({}, {})", pair.first, spell);
-            ++taken;
         }
 
         if (taken || dropped)
