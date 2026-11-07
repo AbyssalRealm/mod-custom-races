@@ -101,6 +101,14 @@
        ]
       }
      ]
+    },
+    {
+     "from": "client/models/QirajiMale.m2",
+     "to": "Creature\\QuirajBattleguard\\QirajiMale.m2"
+    },
+    {
+     "from": "client/models/QirajiFemale.m2",
+     "to": "Creature\\QuirajBattleguard\\QirajiFemale.m2"
     }
    ],
    "edits": [
