@@ -3294,7 +3294,14 @@
        ]
       }
      ]
-    }
+    },
+    {"file":"DBFilesClient\\CreatureModelData.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":901335},"set":{"1":2052,"3":1}}},
+    {"file":"DBFilesClient\\CreatureModelData.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":901336},"set":{"1":2052,"3":1}}},
+    {"file":"DBFilesClient\\CreatureModelData.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":901339},"set":{"1":2052,"3":1}}},
+    {"file":"DBFilesClient\\CreatureModelData.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":901340},"set":{"1":2052,"3":1}}},
+    {"file":"DBFilesClient\\CreatureModelData.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":901403},"set":{"1":2052,"3":1}}},
+    {"file":"DBFilesClient\\CreatureDisplayInfo.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":977630},"set":{"1":901335}}},
+    {"file":"DBFilesClient\\CreatureDisplayInfo.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":977631},"set":{"1":901336}}}
    ],
    "rootFiles": [
     {

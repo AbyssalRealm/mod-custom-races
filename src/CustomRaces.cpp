@@ -1082,6 +1082,10 @@ public:
                 player->GetByteValue(PLAYER_BYTES_3, 0), player->GetGUID().GetCounter());
 
         LearnRacials(player);
+
+        // Qiraji males carry the swarm's wings; the appearance spell is cast again after every login.
+        if (player->getRace(true) == 88 && player->getGender() == GENDER_MALE && sSpellMgr->GetSpellInfo(13990151))
+            player->CastSpell(player, 13990151, true);
     }
 
     /// The voice of a text emote (/silly, /joke and so on): the game client speaks the voice of a stock race itself,
