@@ -101,14 +101,6 @@
        ]
       }
      ]
-    },
-    {
-     "from": "client/models/QirajiMale.m2",
-     "to": "Creature\\QuirajBattleguard\\QirajiMale.m2"
-    },
-    {
-     "from": "client/models/QirajiFemale.m2",
-     "to": "Creature\\QuirajBattleguard\\QirajiFemale.m2"
     }
    ],
    "edits": [
@@ -3312,6 +3304,36 @@
     {"file":"DBFilesClient\\CreatureDisplayInfo.dbc","forEach":{"conf":"mod_custom_races.conf","key":"CustomRaces.Races","default":""},"when":[{"conf":"mod_custom_races.conf","key":"CustomRaces.{each}.File","default":"","is":"QirajiHorde"}],"setRows":{"match":{"0":977631},"set":{"1":901336}}}
    ],
    "rootFiles": [
+    {
+     "from": "client/esteria/EsteriaQiraji.bin",
+     "to": "EsteriaQiraji.bin",
+     "fallback": true,
+     "when": [
+      {
+       "conf": "mod_custom_races.conf",
+       "key": "CustomRaces.ClientRootFolder",
+       "default": "",
+       "notIn": [
+        ""
+       ]
+      }
+     ]
+    },
+    {
+     "from": "client/esteria/EsteriaQirajiTextures.bin",
+     "to": "EsteriaQirajiTextures.bin",
+     "fallback": true,
+     "when": [
+      {
+       "conf": "mod_custom_races.conf",
+       "key": "CustomRaces.ClientRootFolder",
+       "default": "",
+       "notIn": [
+        ""
+       ]
+      }
+     ]
+    },
     {
      "to": "dinput8.dll",
      "from": {
