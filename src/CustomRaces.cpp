@@ -784,11 +784,21 @@ namespace
         for (ItemTemplate* item : *sObjectMgr->GetItemTemplateStoreFast())
             if (item && Lend(item->AllowableRace, baseBit, bit))
                 ++items;
+        // Reputations follow the base race exactly: CoA Custom's Faction.dbc sets some race bits (16 Kul Tiran, 20 and 29
+        // Pandaren) in the other faction's columns, so a bit the base race lacks is taken out as well.
         for (FactionEntry const* faction : sFactionStore)
             if (faction)
                 for (uint32& mask : const_cast<FactionEntry*>(faction)->BaseRepRaceMask)
-                    if (Lend(mask, baseBit, bit))
+                {
+                    if (!mask || mask == 0xFFFFFFFF)
+                        continue;
+                    uint32 const mirrored = (mask & baseBit) ? (mask | bit) : (mask & ~bit);
+                    if (mirrored != mask)
+                    {
+                        mask = mirrored;
                         ++factions;
+                    }
+                }
         for (SkillLineAbilityEntry const* ability : sSkillLineAbilityStore)
             if (ability && Lend(const_cast<SkillLineAbilityEntry*>(ability)->RaceMask, baseBit, bit))
                 ++skills;
